@@ -200,7 +200,7 @@ tfoot td{position:sticky;bottom:0;background:var(--sunken);font-weight:600;borde
     <button class="b primary" id="btnXlsx" type="button">Скачать Excel</button>
     <button class="b" id="btnCsv" type="button">Скачать CSV</button>
     <button class="b" id="btnCopy" type="button">Копировать таблицу</button>
-    <p class="hint">В файл попадут все строки и столбцы исходной выписки плюс «Курс USD/KZT», «Дата курса» и «Сумма, KZT». Если скачивание не началось, скопируйте таблицу и вставьте её в Excel.</p>
+    <p class="hint">В файл попадут все строки и столбцы исходной выписки плюс «Вид операции», «Курс USD/KZT», «Дата курса» и «Сумма, KZT». Если скачивание не началось, скопируйте таблицу и вставьте её в Excel.</p>
   </div>
 
   <div class="tablebox" id="tableBox"></div>
@@ -489,14 +489,37 @@ function findRate(R, k){
   if ((Date.parse(k)-Date.parse(kk))/86400000 > 10) return null;
   return {rate:R.map[kk], date:kk};
 }
-function classify(op){
-  var s = String(op||"").toLowerCase();
-  if (/комисс|fee|commission|налог|tax|вывод|withdraw|списан|удержан/.test(s)) return "t-out";
-  if (/дивиденд|dividend|\bdiv\b|reinvest|купон|coupon|interest|вознагр|процент|пополн|deposit|зачисл|ввод|wire.*(in|rec)|received|in lieu|reclaim/.test(s) && !/tax|налог/.test(s)) return "t-in";
-  if (/продаж|прода|sell|sold/.test(s)) return "t-sell";
-  if (/покуп|купл|buy|bought|purchase/.test(s)) return "t-buy";
-  return "";
+// Вид операции на русском по исходному названию из выписки (и знаку суммы)
+var KINDS = [
+  [/(reclaim|refund|возврат).*(tax|налог)|(tax|налог).*(reclaim|refund|возврат)/i, function(a){ return a!==null && a<0 ? "Налог, удержанный у источника" : "Возврат налога"; }, "t-out"],
+  [/nra|foreign tax|withh|backup|налог|tax/i, "Налог, удержанный у источника", "t-out"],
+  [/reinvest|реинвест/i, "Дивиденды (реинвестирование)", "t-in"],
+  [/дивиденд|dividend|\bdiv\b|distribution|cap.*gain/i, "Дивиденды", "t-in"],
+  [/interest|процент|купон|coupon|вознагр/i, "Проценты / купон", "t-in"],
+  [/in lieu|дробн/i, "Выплата за дробную акцию", "t-in"],
+  [/комисс|fee|commission|сбор/i, "Комиссия / сбор", "t-out"],
+  [/продаж|прода|\bsell|\bsold/i, "Продажа ценных бумаг", "t-sell"],
+  [/покуп|купл|\bbuy|bought|purchase/i, "Покупка ценных бумаг", "t-buy"],
+  [/wire.*(sent|out)|withdraw|вывод|списан|снят/i, "Вывод денег", "t-out"],
+  [/wire|deposit|пополн|зачисл|ввод|received|moneylink|transfer.*in|ach/i, function(a){ return a!==null && a<0 ? "Вывод денег" : "Зачисление денег"; }, "t-in"],
+  [/journal|перевод|transfer/i, "Перевод между счетами", ""],
+  [/split|spin|merger|reorg|exchange|сплит|конверт/i, "Корпоративное действие", ""]
+];
+var KIND_CLS = {};
+function opKind(op, amt){
+  var s = String(op||"");
+  for (var i=0;i<KINDS.length;i++){
+    if (KINDS[i][0].test(s)){
+      var name = typeof KINDS[i][1]==="function" ? KINDS[i][1](amt) : KINDS[i][1];
+      KIND_CLS[name] = KINDS[i][2];
+      return name;
+    }
+  }
+  var other = s || "Без вида операции";
+  KIND_CLS[other] = "";
+  return other;
 }
+function classify(kind){ return KIND_CLS[kind] || ""; }
 function recompute(){
   var R = buildRates(), t=S.tx, m=S.m;
   var res = { R:R, rows:[], ops:{}, miss:0, conv:0, notUsd:0, bad:0, minK:null, maxK:null, dec:"." };
@@ -509,7 +532,7 @@ function recompute(){
     var op = m.txOp>=0 ? String(r[m.txOp]).trim() : "";
     var amt = m.txAmount>=0 ? parseNum(r[m.txAmount], res.dec) : null;
     var cur = m.txCur>=0 ? String(r[m.txCur]).trim() : "";
-    var row = { i:i, r:r, k:k, op:op || "Без вида операции", amt:amt, cur:cur, rate:null, rdate:null, kzt:null, st:"ok" };
+    var row = { i:i, r:r, k:k, op:op, kind:opKind(op, amt), amt:amt, cur:cur, rate:null, rdate:null, kzt:null, st:"ok" };
     if (k){ if(!res.minK||k<res.minK) res.minK=k; if(!res.maxK||k>res.maxK) res.maxK=k; }
     if (m.txCur>=0 && cur && !isUSD(cur)){ row.st="cur"; res.notUsd++; }
     else if (!k){ row.st="nodate"; res.bad++; }
@@ -521,7 +544,7 @@ function recompute(){
         if (amt!==null){ row.kzt = Math.round(amt*f.rate*100)/100; res.conv++; }
       }
     }
-    var g = res.ops[row.op] || (res.ops[row.op] = {n:0, usd:0, kzt:0, cls:classify(row.op)});
+    var g = res.ops[row.kind] || (res.ops[row.kind] = {n:0, usd:0, kzt:0, cls:classify(row.kind)});
     g.n++;
     if (row.kzt!==null){ g.usd += row.amt; g.kzt += row.kzt; }
     res.rows.push(row);
@@ -592,25 +615,32 @@ function visibleCols(){
 function renderTable(){
   var box=$("tableBox"), t=S.tx, res=S.res, m=S.m;
   if (!t){ box.innerHTML='<div class="empty">Загрузите файл транзакций.</div>'; $("btnMore").hidden=true; return; }
-  var rows = S.filter ? res.rows.filter(function(r){ return r.op===S.filter; }) : res.rows;
+  var rows = S.filter ? res.rows.filter(function(r){ return r.kind===S.filter; }) : res.rows;
   var cols = visibleCols();
+  // «Вид операции» стоит сразу после даты (или первым, если даты нет среди столбцов)
+  var kindAt = cols.indexOf(m.txDate) + 1;
   var h = '<table><thead><tr><th class="n">№</th>';
-  cols.forEach(function(c){
-    var lbl = c===m.txOp ? "Вид операции" : c===m.txAmount ? t.headers[c]+", USD" : t.headers[c];
+  cols.forEach(function(c, ci){
+    if (ci===kindAt) h += '<th class="kind">Вид операции</th>';
+    var lbl = c===m.txOp ? t.headers[c]+" (в выписке)" : c===m.txAmount ? t.headers[c]+", USD" : t.headers[c];
     h += '<th'+(c===m.txAmount?' class="n"':'')+'>'+esc(lbl)+'</th>';
   });
+  if (kindAt>=cols.length) h += '<th class="kind">Вид операции</th>';
   h += '<th class="n new">Курс USD/KZT</th><th class="new">Дата курса</th><th class="n new">Сумма, KZT</th></tr></thead><tbody>';
   var sumUsd=0, sumKzt=0;
   rows.forEach(function(row){ if (row.kzt!==null){ sumUsd+=row.amt; sumKzt+=row.kzt; } });
   rows.slice(0, S.shown).forEach(function(row){
     h += '<tr'+(row.st==="norate"||row.st==="nodate"?' class="miss"':'')+'><td class="idx n">'+(row.i+1)+'</td>';
-    cols.forEach(function(c){
+    var kindCell = '<td><span class="badge '+classify(row.kind)+'"><span class="dot"></span>'+esc(row.kind)+'</span></td>';
+    cols.forEach(function(c, ci){
       var v=row.r[c];
-      if (c===m.txOp) h += '<td><span class="badge '+classify(row.op)+'"><span class="dot"></span>'+esc(row.op)+'</span></td>';
+      if (ci===kindAt) h += kindCell;
+      if (c===m.txOp) h += '<td class="muted">'+esc(v)+'</td>';
       else if (c===m.txAmount) h += '<td class="n">'+(row.amt!==null?fmt(row.amt):esc(v))+'</td>';
       else if (c===m.txDate) h += '<td>'+(row.k?keyToRu(row.k):esc(v))+'</td>';
       else h += '<td>'+esc(v instanceof Date ? v.toLocaleDateString("ru-RU") : v)+'</td>';
     });
+    if (kindAt>=cols.length) h += kindCell;
     if (row.st==="cur") h += '<td class="n new muted" colspan="3">'+esc(row.cur)+' — не пересчитывается</td>';
     else if (row.st==="nodate") h += '<td class="n new miss-t" colspan="3">дата не распознана</td>';
     else if (row.st==="norate") h += '<td class="n new miss-t" colspan="3">нет курса на '+keyToRu(row.k)+'</td>';
@@ -621,15 +651,16 @@ function renderTable(){
     }
     h += '</tr>';
   });
-  h += '</tbody><tfoot><tr><td colspan="'+(cols.length+1)+'">Итого'+(S.filter?' — '+esc(S.filter):'')+' ('+rows.length+')</td>'+
+  h += '</tbody><tfoot><tr><td colspan="'+(cols.length+2)+'">Итого'+(S.filter?' — '+esc(S.filter):'')+' ('+rows.length+')</td>'+
        '<td class="n new" colspan="3">'+fmt(sumKzt)+' ₸</td></tr></tfoot></table>';
   // вставим сумму в долларах в итоговую строку под столбцом суммы
   box.innerHTML = h;
   var amtPos = cols.indexOf(m.txAmount);
   if (amtPos>=0){
     var tr = box.querySelector("tfoot tr");
-    tr.innerHTML = '<td colspan="'+(amtPos+1)+'">Итого'+(S.filter?' — '+esc(S.filter):'')+' ('+rows.length+')</td>'+
-      '<td class="n">'+fmt(sumUsd)+'</td>'+(cols.length-amtPos-1>0?'<td colspan="'+(cols.length-amtPos-1)+'"></td>':'')+
+    var amtIdx = amtPos + (kindAt<=amtPos ? 1 : 0), after = cols.length - amtIdx;
+    tr.innerHTML = '<td colspan="'+(amtIdx+1)+'">Итого'+(S.filter?' — '+esc(S.filter):'')+' ('+rows.length+')</td>'+
+      '<td class="n">'+fmt(sumUsd)+'</td>'+(after>0?'<td colspan="'+after+'"></td>':'')+
       '<td class="new" colspan="2"></td><td class="n new kzt">'+fmt(sumKzt)+'</td>';
   }
   var more=$("btnMore");
@@ -707,11 +738,11 @@ function exportRows(forText){
     var s = digits ? n.toFixed(digits) : String(n);
     return dec==="," ? s.replace(".",",") : s;
   };
-  var out = [t.headers.concat(["Курс USD/KZT (НБ РК)","Дата курса","Сумма, KZT"])];
+  var out = [t.headers.concat(["Вид операции","Курс USD/KZT (НБ РК)","Дата курса","Сумма, KZT"])];
   res.rows.forEach(function(row){
     var r = row.r.map(function(v){ return v instanceof Date ? v.toLocaleDateString("ru-RU") : v; });
     var note = row.st==="cur" ? "не USD" : row.st==="norate" ? "нет курса" : row.st==="nodate" ? "дата не распознана" : "";
-    r.push(row.rate!=null ? num(row.rate) : note, row.rdate ? keyToRu(row.rdate) : "", row.kzt!=null ? num(row.kzt,2) : "");
+    r.push(row.kind, row.rate!=null ? num(row.rate) : note, row.rdate ? keyToRu(row.rdate) : "", row.kzt!=null ? num(row.kzt,2) : "");
     out.push(r);
   });
   return out;
