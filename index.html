@@ -717,7 +717,17 @@ function exportRows(forText){
   return out;
 }
 function baseName(){ return (S.tx.name||"transactions").replace(/\.[^.]+$/,"") + "_KZT"; }
+var dlPromise = (window.claude && window.claude.use) ? window.claude.use("downloads").catch(function(){ return null; }) : Promise.resolve(null);
 function save(blob, name){
+  dlPromise.then(function(dl){
+    if (!dl) return saveLink(blob, name);
+    dl.save({filename:name, data:blob}).then(function(){ toast("Файл «"+name+"» сохранён"); }, function(e){
+      if (e && e.code === "declined") return;
+      toast("Скачивание недоступно — используйте «Копировать таблицу»");
+    });
+  });
+}
+function saveLink(blob, name){
   try{
     var url=URL.createObjectURL(blob), a=document.createElement("a");
     a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
