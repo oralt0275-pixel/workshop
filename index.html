@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Сделки в тенге</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#F3F6F8; --surface:#FFFFFF; --sunken:#EAF0F3; --ink:#15212B; --muted:#5A6B78; --line:#D6DFE5;
+  --accent:#0A86A0; --accent-ink:#FFFFFF; --accent-soft:#DDF1F5;
+  --gold:#A97A0B; --gold-soft:#FBF1D6;
+  --pos:#23804F; --pos-soft:#DFF2E7; --neg:#B83B28; --neg-soft:#F8E3DF; --warn:#9A6500; --warn-soft:#FDEFD2;
+  --font:"Onest", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0E151B; --surface:#152029; --sunken:#1B2833; --ink:#E4ECF1; --muted:#90A2AF; --line:#27363F;
+    --accent:#3CC0D8; --accent-ink:#06222A; --accent-soft:#123844;
+    --gold:#E6BA4E; --gold-soft:#3A2F12;
+    --pos:#5FCB8E; --pos-soft:#15342A; --neg:#F08A77; --neg-soft:#3D1F1A; --warn:#F0B750; --warn-soft:#3A2C10;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E151B; --surface:#152029; --sunken:#1B2833; --ink:#E4ECF1; --muted:#90A2AF; --line:#27363F;
+  --accent:#3CC0D8; --accent-ink:#06222A; --accent-soft:#123844;
+  --gold:#E6BA4E; --gold-soft:#3A2F12;
+  --pos:#5FCB8E; --pos-soft:#15342A; --neg:#F08A77; --neg-soft:#3D1F1A; --warn:#F0B750; --warn-soft:#3A2C10;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--font)}
+.wrap{max-width:1240px;margin:0 auto;padding-inline:16px;padding-block:28px 64px;display:grid;gap:22px}
+h1{font-size:clamp(24px,4vw,32px);line-height:1.15;margin:0;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:17px;margin:0;font-weight:600}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+.top p{margin:6px 0 0;color:var(--muted);max-width:62ch}
+.pair{font-family:var(--mono);font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted)}
+.pair b{color:var(--ink);font-weight:500}
+.banner{background:var(--gold-soft);color:var(--ink);border-radius:8px;padding:10px 14px;font-size:14px}
+.banner b{color:var(--gold)}
+
+.inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:grid;gap:14px;align-content:start}
+.panel-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.step{font-family:var(--mono);font-size:12px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--accent-ink);font-weight:500}
+.tag{font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:var(--gold-soft);color:var(--gold);font-weight:600}
+.drop{display:flex;align-items:center;gap:12px;border:1.5px dashed var(--line);border-radius:8px;padding:14px;cursor:pointer;background:var(--sunken);transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.drop svg{flex:none;color:var(--accent)}
+.drop .t{font-weight:600}
+.drop .s{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 12px}
+label.f{display:grid;gap:4px;font-size:12px;color:var(--muted);letter-spacing:.02em}
+select,input[type=number]{font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 8px;width:100%;min-width:0}
+select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.meta{font-size:13px;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:500;font-family:var(--mono);font-size:12.5px}
+.err{color:var(--neg);font-size:13px}
+.hint{font-size:13px;color:var(--muted);margin:0}
+.hint a{color:var(--accent)}
+
+.opts{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
+.opts label.f{min-width:220px;flex:1 1 220px;max-width:360px}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;padding-bottom:8px}
+.check input{accent-color:var(--accent);width:16px;height:16px}
+
+.stats{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:14px;color:var(--muted)}
+.stats b{color:var(--ink);font-family:var(--mono);font-weight:500}
+.stats .bad b{color:var(--neg)}
+.ops{display:flex;flex-wrap:wrap;gap:8px}
+.op{font:inherit;cursor:pointer;display:grid;gap:2px;text-align:left;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:150px;flex:0 1 auto}
+.op:hover{border-color:var(--accent)}
+.op[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-soft)}
+.op .nm{display:flex;align-items:center;gap:6px;font-weight:600;font-size:14px}
+.op .nm i{font-style:normal;font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:400}
+.op .v{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.op .v span{color:var(--gold)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--muted)}
+
+.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+button.b{font:inherit;font-size:14px;font-weight:500;padding:8px 14px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+button.b:hover{border-color:var(--accent)}
+button.b.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.b:disabled{opacity:.5;cursor:not-allowed}
+.actions .hint{flex:1 1 260px}
+
+.tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;max-height:70vh;overflow-y:auto}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5px}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:top}
+th{position:sticky;top:0;background:var(--sunken);font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;z-index:1}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px}
+th.new{color:var(--gold);background:color-mix(in srgb,var(--gold-soft) 70%,var(--sunken))}
+td.new{background:color-mix(in srgb,var(--gold-soft) 40%,transparent)}
+td.kzt{font-weight:500}
+td.idx{color:var(--muted);font-family:var(--mono);font-size:12px}
+td small{display:block;color:var(--muted);font-size:11px;font-family:var(--font)}
+tr.miss td.new{background:var(--neg-soft)}
+tfoot td{position:sticky;bottom:0;background:var(--sunken);font-weight:600;border-top:1px solid var(--line);border-bottom:0}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:99px;font-size:12.5px;font-weight:500;background:var(--sunken);color:var(--ink);max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.t-buy{--c:var(--accent);--cs:var(--accent-soft)}
+.t-sell{--c:var(--gold);--cs:var(--gold-soft)}
+.t-in{--c:var(--pos);--cs:var(--pos-soft)}
+.t-out{--c:var(--neg);--cs:var(--neg-soft)}
+.badge[class*="t-"]{background:var(--cs);color:var(--ink)}
+[class*="t-"] .dot{background:var(--c)}
+.muted{color:var(--muted)}
+.miss-t{color:var(--neg);font-family:var(--font);font-size:12px}
+.more{justify-self:center}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:calc(100% - 32px)}
+.toast.on{opacity:1}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Сделки брокерского счёта в тенге</h1>
+      <p>Загрузите выписку транзакций и архив официальных курсов Национального банка РК. К каждой операции подставится курс на её дату и сумма в тенге.</p>
+    </div>
+    <div class="pair" id="pairInfo">USD → KZT</div>
+  </header>
+
+  <div class="banner" id="sampleBanner"><b>Пример данных.</b> Сейчас показаны демонстрационные транзакции и примерные курсы. Загрузите свои файлы ниже, и таблица пересчитается.</div>
+
+  <section class="inputs">
+    <div class="panel" id="txPanel">
+      <div class="panel-head"><span class="step">1</span><h2>Транзакции брокера</h2><span class="tag" id="txTag">пример</span></div>
+      <label class="drop" id="txDrop">
+        <input type="file" id="txFile" accept=".csv,.txt,.tsv,.xlsx,.xls,.xlsm,.ods">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M12 17v-6"/><path d="m9 14 3-3 3 3"/></svg>
+        <span><span class="t">Выберите или перетащите файл</span><br><span class="s" id="txName">CSV или Excel</span></span>
+      </label>
+      <div class="err" id="txErr" hidden></div>
+      <div class="fields">
+        <label class="f">Дата операции<select id="mTxDate"></select></label>
+        <label class="f">Вид операции<select id="mTxOp"></select></label>
+        <label class="f">Сумма в долларах<select id="mTxAmount"></select></label>
+        <label class="f">Валюта (если есть)<select id="mTxCur"></select></label>
+        <label class="f" id="txSheetBox" hidden>Лист<select id="txSheet"></select></label>
+        <label class="f">Строка заголовков<input type="number" id="txHeader" min="1" step="1"></label>
+      </div>
+      <div class="meta" id="txMeta"></div>
+    </div>
+
+    <div class="panel" id="fxPanel">
+      <div class="panel-head"><span class="step">2</span><h2>Курсы НБ РК</h2><span class="tag" id="fxTag">пример</span></div>
+      <label class="drop" id="fxDrop">
+        <input type="file" id="fxFile" accept=".csv,.txt,.tsv,.xlsx,.xls,.xlsm,.ods">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>
+        <span><span class="t">Выберите или перетащите файл</span><br><span class="s" id="fxName">CSV или Excel с сайта nationalbank.kz</span></span>
+      </label>
+      <div class="err" id="fxErr" hidden></div>
+      <div class="fields">
+        <label class="f">Дата курса<select id="mFxDate"></select></label>
+        <label class="f">Курс доллара США<select id="mFxRate"></select></label>
+        <label class="f">Валюта (если в файле несколько)<select id="mFxCur"></select></label>
+        <label class="f" id="fxSheetBox" hidden>Лист<select id="fxSheet"></select></label>
+        <label class="f">Строка заголовков<input type="number" id="fxHeader" min="1" step="1"></label>
+      </div>
+      <div class="meta" id="fxMeta"></div>
+      <p class="hint">Архив курсов: <a href="https://nationalbank.kz/ru/exchangerates/ezhednevnye-oficialnye-rynochnye-kursy-valyut" target="_blank" rel="noopener">nationalbank.kz → Официальные курсы валют</a>. Подойдёт файл с датой и курсом USD в отдельных столбцах.</p>
+    </div>
+  </section>
+
+  <section class="opts" aria-label="Настройки пересчёта">
+    <label class="f">Какой курс брать
+      <select id="optRule">
+        <option value="prev">На дату операции, если его нет — последний предыдущий</option>
+        <option value="exact">Строго на дату операции</option>
+        <option value="prevday">На предыдущую дату (день до операции)</option>
+      </select>
+    </label>
+    <label class="f">Порядок в датах вида 01/02/2024
+      <select id="optOrder">
+        <option value="auto">Определять автоматически</option>
+        <option value="dmy">День / месяц / год</option>
+        <option value="mdy">Месяц / день / год</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="optAll"> Показать все столбцы файла</label>
+  </section>
+
+  <section style="display:grid;gap:14px" aria-label="Итоги">
+    <div class="stats" id="stats"></div>
+    <div class="ops" id="ops"></div>
+  </section>
+
+  <div class="actions">
+    <button class="b primary" id="btnXlsx" type="button">Скачать Excel</button>
+    <button class="b" id="btnCsv" type="button">Скачать CSV</button>
+    <button class="b" id="btnCopy" type="button">Копировать таблицу</button>
+    <p class="hint">В файл попадут все строки и столбцы исходной выписки плюс «Курс USD/KZT», «Дата курса» и «Сумма, KZT». Если скачивание не началось, скопируйте таблицу и вставьте её в Excel.</p>
+  </div>
+
+  <div class="tablebox" id="tableBox"></div>
+  <button class="b more" id="btnMore" type="button" hidden>Показать ещё</button>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- Пример данных ---------- */
+var SAMPLE_TX = [
+  "Дата сделки;Вид операции;Инструмент;Количество;Цена;Сумма;Валюта",
+  "02.01.2024;Пополнение счёта;;;;5000.00;USD",
+  "03.01.2024;Покупка;AAPL;10;185.64;-1856.40;USD",
+  "03.01.2024;Комиссия брокера;AAPL;;;-3.71;USD",
+  "10.01.2024;Покупка;MSFT;5;375.79;-1878.95;USD",
+  "13.01.2024;Покупка;KO;12;60.25;-723.00;USD",
+  "15.02.2024;Дивиденды;AAPL;;;2.40;USD",
+  "15.02.2024;Налог на дивиденды;AAPL;;;-0.36;USD",
+  "22.02.2024;Продажа;MSFT;2;411.65;823.30;USD",
+  "22.02.2024;Комиссия брокера;MSFT;;;-1.65;USD",
+  "01.03.2024;Покупка;SAP;4;172.10;-688.40;EUR",
+  "14.03.2024;Дивиденды;MSFT;;;2.25;USD",
+  "29.03.2024;Вывод средств;;;;-500.00;USD"
+].join("\n");
+var SAMPLE_FX = [
+  "Дата;USD",
+  "02.01.2024;454.56","03.01.2024;455.12","04.01.2024;456.30","05.01.2024;455.80",
+  "08.01.2024;454.90","09.01.2024;453.70","10.01.2024;452.85","11.01.2024;451.60","12.01.2024;451.20",
+  "15.02.2024;450.10","16.02.2024;449.75","21.02.2024;450.60","22.02.2024;451.35",
+  "01.03.2024;451.90","14.03.2024;449.20","15.03.2024;448.70","28.03.2024;447.95","29.03.2024;446.80"
+].join("\n");
+
+/* ---------- Состояние ---------- */
+var S = {
+  tx: null, fx: null,
+  m: { txDate:-1, txOp:-1, txAmount:-1, txCur:-1, fxDate:-1, fxRate:-1, fxCur:-1 },
+  rule: "prev", order: "auto", showAll: false, filter: null, shown: 500,
+  res: null
+};
+var $ = function(id){ return document.getElementById(id); };
+
+/* ---------- Утилиты ---------- */
+function esc(v){ return String(v == null ? "" : v).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+var nf2 = new Intl.NumberFormat("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2});
+var nfR = new Intl.NumberFormat("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:4});
+function fmt(n){ return n == null || isNaN(n) ? "" : nf2.format(n); }
+function keyToRu(k){ return k ? k.slice(8,10)+"."+k.slice(5,7)+"."+k.slice(0,4) : ""; }
+function pad(n){ return (n<10?"0":"")+n; }
+function mk(y,m,d){
+  if (y < 100) y += 2000;
+  if (m<1||m>12||d<1||d>31||y<1900||y>2200) return null;
+  return y+"-"+pad(m)+"-"+pad(d);
+}
+function blank(v){ return v == null || String(v).trim() === ""; }
+var toastT;
+function toast(msg){ var t=$("toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(toastT); toastT=setTimeout(function(){t.classList.remove("on");},2600); }
+
+/* ---------- Чтение файлов ---------- */
+function decode(buf){
+  try { return new TextDecoder("utf-8",{fatal:true}).decode(buf); }
+  catch(e){ return new TextDecoder("windows-1251").decode(buf); }
+}
+function detectDelim(text){
+  var lines = text.split(/\r?\n/).filter(function(l){return l.trim();}).slice(0,30);
+  var best=",", bestScore=-1;
+  [";", ",", "\t", "|"].forEach(function(d){
+    var counts = lines.map(function(l){ var c=0,q=false; for (var i=0;i<l.length;i++){ var ch=l[i]; if(ch=='"') q=!q; else if(!q && ch===d) c++; } return c; });
+    var freq={}; counts.forEach(function(c){ if(c>0) freq[c]=(freq[c]||0)+1; });
+    var mode=0, mc=0; Object.keys(freq).forEach(function(k){ if(freq[k]>mc || (freq[k]===mc && +k>mode)){ mc=freq[k]; mode=+k; } });
+    var score = mc*100 + mode;
+    if (score>bestScore){ bestScore=score; best=d; }
+  });
+  return best;
+}
+function parseCSV(text){
+  text = text.replace(/^﻿/,"");
+  var d = detectDelim(text), rows=[], row=[], cell="", q=false;
+  for (var i=0;i<text.length;i++){
+    var c=text[i];
+    if (q){
+      if (c=='"'){ if (text[i+1]=='"'){ cell+='"'; i++; } else q=false; }
+      else cell+=c;
+    } else if (c=='"' && cell==="") q=true;
+    else if (c===d){ row.push(cell); cell=""; }
+    else if (c=="\n" || c=="\r"){ if (c=="\r" && text[i+1]=="\n") i++; row.push(cell); rows.push(row); row=[]; cell=""; }
+    else cell+=c;
+  }
+  if (cell!=="" || row.length){ row.push(cell); rows.push(row); }
+  return { rows: rows, delim: d };
+}
+function readFile(file){
+  return file.arrayBuffer().then(function(buf){
+    var name = file.name.toLowerCase();
+    if (/\.(xlsx|xls|xlsm|ods)$/.test(name)){
+      if (typeof XLSX === "undefined") throw new Error("Не загрузилась библиотека для чтения Excel. Проверьте интернет или сохраните файл как CSV.");
+      var wb = XLSX.read(buf, {type:"array"});
+      return { wb: wb };
+    }
+    var p = parseCSV(decode(buf));
+    return { rows: p.rows, delim: p.delim };
+  });
+}
+function sheetRows(wb, name){
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, raw:true, defval:""});
+}
+
+/* ---------- Разбор значений ---------- */
+function isDateLike(v){
+  if (v instanceof Date) return true;
+  var s = String(v).trim();
+  return /^\d{4}[-./]\d{1,2}[-./]\d{1,2}/.test(s) || /^\d{1,2}[-./]\d{1,2}[-./]\d{2,4}\b/.test(s) || /^(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b/.test(s);
+}
+function detectOrder(vals){
+  var dmy=false, mdy=false;
+  vals.forEach(function(v){
+    var m = String(v).trim().match(/^(\d{1,2})[./-](\d{1,2})[./-]\d{2,4}/);
+    if (!m) return;
+    if (+m[1]>12) dmy=true;
+    if (+m[2]>12) mdy=true;
+  });
+  if (dmy && !mdy) return "dmy";
+  if (mdy && !dmy) return "mdy";
+  return null;
+}
+function serialKey(n){
+  var d = new Date(Date.UTC(1899,11,30) + Math.floor(n)*86400000);
+  return mk(d.getUTCFullYear(), d.getUTCMonth()+1, d.getUTCDate());
+}
+function parseDate(v, order){
+  if (v == null || v === "") return null;
+  if (v instanceof Date) return mk(v.getFullYear(), v.getMonth()+1, v.getDate());
+  if (typeof v === "number") return (v>20000 && v<80000) ? serialKey(v) : null;
+  var s = String(v).trim(), m;
+  if ((m = s.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/))) return mk(+m[1], +m[2], +m[3]);
+  if ((m = s.match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{4}|\d{2})(?!\d)/))){
+    return order === "mdy" ? mk(+m[3], +m[1], +m[2]) : mk(+m[3], +m[2], +m[1]);
+  }
+  if ((m = s.match(/^(\d{4})(\d{2})(\d{2})(?!\d)/))) return mk(+m[1], +m[2], +m[3]);
+  if ((m = s.match(/^\d{5}(\.\d+)?$/))) return serialKey(parseFloat(s));
+  return null;
+}
+function detectDecimal(vals){
+  var c=0, d=0;
+  vals.forEach(function(v){
+    if (typeof v === "number") return;
+    var s = String(v).replace(/[^\d.,]/g,"");
+    var hasC = s.indexOf(",")>=0, hasD = s.indexOf(".")>=0;
+    if (hasC && hasD){ if (s.lastIndexOf(",")>s.lastIndexOf(".")) c++; else d++; return; }
+    var sep = hasC ? "," : hasD ? "." : null;
+    if (!sep || s.split(sep).length>2) return;
+    if (s.length - s.lastIndexOf(sep) - 1 !== 3){ if (sep===",") c++; else d++; }
+  });
+  return c>d ? "," : ".";
+}
+function parseNum(v, colDec){
+  if (typeof v === "number") return isFinite(v) ? v : null;
+  if (v == null) return null;
+  var s = String(v).trim();
+  if (!s || isDateLike(s)) return null;
+  var neg = /^\(.*\)$/.test(s) || /^-/.test(s.replace(/[^\d\-,.]/g,""));
+  s = s.replace(/[^\d,.]/g,"");
+  if (!/\d/.test(s)) return null;
+  var lc = s.lastIndexOf(","), ld = s.lastIndexOf("."), dec;
+  if (lc>=0 && ld>=0) dec = lc>ld ? "," : ".";
+  else if (lc>=0 || ld>=0){
+    var sep = lc>=0 ? "," : ".";
+    var cnt = s.split(sep).length-1, after = s.length - s.lastIndexOf(sep) - 1;
+    if (cnt>1) dec = sep===","?".":",";
+    else if (after!==3) dec = sep;
+    else dec = (colDec||".")===sep ? sep : (sep===","?".":",");
+  } else dec = ".";
+  var th = dec===","?".":",";
+  s = s.split(th).join("");
+  if (dec===",") s = s.replace(",",".");
+  var n = parseFloat(s);
+  if (isNaN(n)) return null;
+  return neg ? -Math.abs(n) : n;
+}
+function isUSD(v){ return /^(usd|us\$|\$|доллар.*|долл\.?\s*сша|dollar.*)$/i.test(String(v).trim()); }
+
+/* ---------- Таблицы ---------- */
+function detectHeader(rows){
+  var top = rows.slice(0,40), max=0;
+  top.forEach(function(r){ var c=r.filter(function(v){return !blank(v);}).length; if(c>max) max=c; });
+  var need = Math.max(2, Math.ceil(max*0.6));
+  for (var i=0;i<top.length;i++){
+    var cells = top[i].filter(function(v){return !blank(v);});
+    if (cells.length < need) continue;
+    var texty = cells.filter(function(v){ return typeof v==="string" && !isDateLike(v) && parseNum(v)===null; }).length;
+    if (texty >= Math.ceil(cells.length/2)) return i;
+  }
+  return 0;
+}
+function applyHeader(t){
+  var rows = t.rows, h = Math.min(Math.max(t.headerIdx,0), Math.max(rows.length-1,0));
+  t.headerIdx = h;
+  var width = 0;
+  rows.forEach(function(r){ if (r.length>width) width=r.length; });
+  var hr = rows[h] || [];
+  var seen = {};
+  t.headers = [];
+  for (var i=0;i<width;i++){
+    var name = blank(hr[i]) ? "Столбец "+(i+1) : String(hr[i]).trim();
+    if (seen[name]) name += " ("+(i+1)+")";
+    seen[name]=1;
+    t.headers.push(name);
+  }
+  t.data = rows.slice(h+1).filter(function(r){ return r.some(function(v){ return !blank(v); }); })
+    .map(function(r){ var a=r.slice(); while(a.length<width) a.push(""); return a; });
+}
+function colVals(t, i, lim){
+  var out=[]; if (i<0) return out;
+  for (var r=0;r<t.data.length && out.length<(lim||400);r++){ var v=t.data[r][i]; if(!blank(v)) out.push(v); }
+  return out;
+}
+function guess(t, patterns, test, exclude, needName){
+  var best=-1, bestScore=0;
+  t.headers.forEach(function(h,i){
+    if (exclude.indexOf(i)>=0) return;
+    var vals = colVals(t,i,200);
+    if (!vals.length) return;
+    var ok = vals.filter(test).length / vals.length;
+    if (ok < 0.6) return;
+    var p = -1;
+    for (var k=0;k<patterns.length;k++){ if (patterns[k].test(h)){ p=k; break; } }
+    if (needName && p<0) return;
+    var score = ok + (p>=0 ? 3 - p*0.5 : 0);
+    if (score > bestScore){ bestScore=score; best=i; }
+  });
+  return best;
+}
+var dateTest = function(v){ return parseDate(v,"dmy")!==null || parseDate(v,"mdy")!==null; };
+var numTest = function(v){ return parseNum(v)!==null; };
+var textTest = function(v){ return typeof v==="string" && parseNum(v)===null && !isDateLike(v); };
+var curTest = function(v){ return /^[A-Za-z]{3}$/.test(String(v).trim()) || isUSD(v); };
+
+function guessTx(){
+  var t=S.tx, m=S.m;
+  m.txDate = guess(t,[/дата.*(сдел|опер|испол|trade)|trade.?date|date.?time/i,/дата|date|время|time/i],dateTest,[]);
+  m.txCur = guess(t,[/валют|currency|ccy|curr/i],curTest,[m.txDate],true);
+  m.txOp = guess(t,[/вид.*опер|тип.*опер|operation|transaction.?type|тип.*транз/i,/тип|вид|type|action|операц|side|направл|code/i,/описан|descr|назнач|коммент|comment/i],textTest,[m.txDate,m.txCur]);
+  m.txAmount = guess(t,[/(сумм|amount|total|net).*(usd|\$|долл)|usd.*(сумм|amount)/i,/сумм|amount|total|итог|net|proceeds|стоимост|объ[её]м|value/i,/usd|\$|долл/i],numTest,[m.txDate,m.txCur,m.txOp]);
+}
+function guessFx(){
+  var t=S.fx, m=S.m;
+  m.fxDate = guess(t,[/дата|date/i],dateTest,[]);
+  m.fxCur = guess(t,[/валют|currency|ccy|код/i],curTest,[m.fxDate],true);
+  var rateTest = function(v){ var n=parseNum(v); return n!==null && n>1 && n<100000; };
+  m.fxRate = guess(t,[/usd|доллар|dollar/i,/курс|rate|value|знач|тенге|kzt/i],rateTest,[m.fxDate,m.fxCur]);
+}
+
+/* ---------- Пересчёт ---------- */
+function orderFor(t, col){
+  if (S.order !== "auto") return S.order;
+  return detectOrder(colVals(t,col,5000)) || "dmy";
+}
+function buildRates(){
+  var t=S.fx, m=S.m, out={map:{}, keys:[], err:null, skipped:0};
+  if (!t) return out;
+  if (m.fxDate<0 || m.fxRate<0){ out.err="Выберите столбцы с датой и курсом."; return out; }
+  var ord = orderFor(t, m.fxDate), dec = detectDecimal(colVals(t,m.fxRate,2000));
+  t.data.forEach(function(r){
+    if (m.fxCur>=0 && !isUSD(r[m.fxCur])) return;
+    var k = parseDate(r[m.fxDate], ord), v = parseNum(r[m.fxRate], dec);
+    if (!k || v===null || v<=0){ out.skipped++; return; }
+    out.map[k] = v;
+  });
+  out.keys = Object.keys(out.map).sort();
+  if (!out.keys.length) out.err = "В выбранных столбцах не нашлось пар «дата — курс».";
+  return out;
+}
+function findRate(R, k){
+  if (!k || !R.keys.length) return null;
+  if (S.rule === "exact") return R.map[k]!=null ? {rate:R.map[k], date:k} : null;
+  var keys=R.keys, lo=0, hi=keys.length-1, ans=-1, strict = S.rule==="prevday";
+  while (lo<=hi){
+    var mid=(lo+hi)>>1;
+    if (strict ? keys[mid] < k : keys[mid] <= k){ ans=mid; lo=mid+1; } else hi=mid-1;
+  }
+  if (ans<0) return null;
+  var kk = keys[ans];
+  // не тянем курс из слишком далёкого прошлого — вероятно, архив не покрывает период
+  if ((Date.parse(k)-Date.parse(kk))/86400000 > 10) return null;
+  return {rate:R.map[kk], date:kk};
+}
+function classify(op){
+  var s = String(op||"").toLowerCase();
+  if (/комисс|fee|commission|налог|tax|вывод|withdraw|списан|удержан/.test(s)) return "t-out";
+  if (/дивиденд|dividend|\bdiv\b|reinvest|купон|coupon|interest|вознагр|процент|пополн|deposit|зачисл|ввод|wire.*(in|rec)|received|in lieu|reclaim/.test(s) && !/tax|налог/.test(s)) return "t-in";
+  if (/продаж|прода|sell|sold/.test(s)) return "t-sell";
+  if (/покуп|купл|buy|bought|purchase/.test(s)) return "t-buy";
+  return "";
+}
+function recompute(){
+  var R = buildRates(), t=S.tx, m=S.m;
+  var res = { R:R, rows:[], ops:{}, miss:0, conv:0, notUsd:0, bad:0, minK:null, maxK:null, dec:"." };
+  S.res = res;
+  if (!t) return;
+  var ord = orderFor(t, m.txDate);
+  res.dec = m.txAmount>=0 ? detectDecimal(colVals(t,m.txAmount,2000)) : ".";
+  t.data.forEach(function(r, i){
+    var k = m.txDate>=0 ? parseDate(r[m.txDate], ord) : null;
+    var op = m.txOp>=0 ? String(r[m.txOp]).trim() : "";
+    var amt = m.txAmount>=0 ? parseNum(r[m.txAmount], res.dec) : null;
+    var cur = m.txCur>=0 ? String(r[m.txCur]).trim() : "";
+    var row = { i:i, r:r, k:k, op:op || "Без вида операции", amt:amt, cur:cur, rate:null, rdate:null, kzt:null, st:"ok" };
+    if (k){ if(!res.minK||k<res.minK) res.minK=k; if(!res.maxK||k>res.maxK) res.maxK=k; }
+    if (m.txCur>=0 && cur && !isUSD(cur)){ row.st="cur"; res.notUsd++; }
+    else if (!k){ row.st="nodate"; res.bad++; }
+    else {
+      var f = findRate(R, k);
+      if (!f){ row.st="norate"; res.miss++; }
+      else {
+        row.rate=f.rate; row.rdate=f.date;
+        if (amt!==null){ row.kzt = Math.round(amt*f.rate*100)/100; res.conv++; }
+      }
+    }
+    var g = res.ops[row.op] || (res.ops[row.op] = {n:0, usd:0, kzt:0, cls:classify(row.op)});
+    g.n++;
+    if (row.kzt!==null){ g.usd += row.amt; g.kzt += row.kzt; }
+    res.rows.push(row);
+  });
+  if (S.filter && !res.ops[S.filter]) S.filter = null;
+}
+
+/* ---------- Отрисовка ---------- */
+function fillSelect(sel, t, val, optional){
+  var h = optional ? '<option value="-1">— нет —</option>' : '<option value="-1">— выберите —</option>';
+  (t ? t.headers : []).forEach(function(n,i){ h += '<option value="'+i+'"'+(i===val?" selected":"")+'>'+esc(n)+'</option>'; });
+  sel.innerHTML = h;
+  sel.value = String(val);
+}
+function renderInputs(){
+  var t=S.tx, f=S.fx, m=S.m;
+  fillSelect($("mTxDate"), t, m.txDate); fillSelect($("mTxOp"), t, m.txOp);
+  fillSelect($("mTxAmount"), t, m.txAmount); fillSelect($("mTxCur"), t, m.txCur, true);
+  fillSelect($("mFxDate"), f, m.fxDate); fillSelect($("mFxRate"), f, m.fxRate); fillSelect($("mFxCur"), f, m.fxCur, true);
+  [["tx",t],["fx",f]].forEach(function(p){
+    var k=p[0], tb=p[1];
+    $(k+"Header").value = tb ? tb.headerIdx+1 : "";
+    $(k+"Tag").hidden = !(tb && tb.sample);
+    $(k+"Name").textContent = tb ? (tb.sample ? "Пример: " : "") + tb.name : "CSV или Excel";
+    var box=$(k+"SheetBox");
+    if (tb && tb.wb && tb.wb.SheetNames.length>1){
+      box.hidden=false;
+      $(k+"Sheet").innerHTML = tb.wb.SheetNames.map(function(n){ return '<option'+(n===tb.sheet?' selected':'')+'>'+esc(n)+'</option>'; }).join("");
+    } else box.hidden=true;
+  });
+  $("sampleBanner").hidden = !((t && t.sample) || (f && f.sample));
+}
+function renderMeta(){
+  var res=S.res, R=res.R, t=S.tx;
+  $("txMeta").innerHTML = t ? 'Строк с данными: <b>'+t.data.length+'</b>'+(res.minK?' · период <b>'+keyToRu(res.minK)+'</b> — <b>'+keyToRu(res.maxK)+'</b>':'') : "";
+  var fe=$("fxErr");
+  if (R.err){ fe.textContent=R.err; fe.hidden=false; } else fe.hidden=true;
+  $("fxMeta").innerHTML = R.keys.length ? 'Курсов: <b>'+R.keys.length+'</b> · с <b>'+keyToRu(R.keys[0])+'</b> по <b>'+keyToRu(R.keys[R.keys.length-1])+'</b>'+(R.skipped?' · пропущено строк: '+R.skipped:'') : "";
+  $("pairInfo").innerHTML = R.keys.length ? 'USD/KZT на '+keyToRu(R.keys[R.keys.length-1])+': <b>'+nfR.format(R.map[R.keys[R.keys.length-1]])+'</b>' : "USD → KZT";
+}
+function renderSummary(){
+  var res=S.res, h="";
+  h += '<span>Операций: <b>'+res.rows.length+'</b></span>';
+  h += '<span>Пересчитано в тенге: <b>'+res.conv+'</b></span>';
+  if (res.miss) h += '<span class="bad">Нет курса на дату: <b>'+res.miss+'</b></span>';
+  if (res.bad) h += '<span class="bad">Не распознана дата: <b>'+res.bad+'</b></span>';
+  if (res.notUsd) h += '<span>В другой валюте (не пересчитаны): <b>'+res.notUsd+'</b></span>';
+  $("stats").innerHTML = h;
+  var names = Object.keys(res.ops).sort(function(a,b){ return res.ops[b].n - res.ops[a].n; });
+  var o = '<button type="button" class="op" data-op="" aria-pressed="'+(!S.filter)+'"><span class="nm">Все виды <i>'+res.rows.length+'</i></span><span class="v">'+names.length+' вид(ов) операций</span></button>';
+  names.forEach(function(n){
+    var g=res.ops[n];
+    o += '<button type="button" class="op '+g.cls+'" data-op="'+esc(n)+'" aria-pressed="'+(S.filter===n)+'"><span class="nm"><span class="dot"></span>'+esc(n)+' <i>'+g.n+'</i></span>'+
+      '<span class="v">'+fmt(g.usd)+' $ · <span>'+fmt(g.kzt)+' ₸</span></span></button>';
+  });
+  $("ops").innerHTML = o;
+}
+function visibleCols(){
+  var m=S.m, t=S.tx;
+  if (S.showAll) return t.headers.map(function(_,i){return i;});
+  var cols=[];
+  [m.txDate, m.txOp].forEach(function(c){ if(c>=0 && cols.indexOf(c)<0) cols.push(c); });
+  // добавим текстовые столбцы вроде «Инструмент», чтобы строки были узнаваемы
+  t.headers.forEach(function(h,i){ if (cols.length<4 && cols.indexOf(i)<0 && i!==m.txAmount && i!==m.txCur && /инструм|тикер|ticker|symbol|бумаг|security|наимен|описан|descr/i.test(h)) cols.push(i); });
+  [m.txCur, m.txAmount].forEach(function(c){ if(c>=0 && cols.indexOf(c)<0) cols.push(c); });
+  return cols;
+}
+function renderTable(){
+  var box=$("tableBox"), t=S.tx, res=S.res, m=S.m;
+  if (!t){ box.innerHTML='<div class="empty">Загрузите файл транзакций.</div>'; $("btnMore").hidden=true; return; }
+  var rows = S.filter ? res.rows.filter(function(r){ return r.op===S.filter; }) : res.rows;
+  var cols = visibleCols();
+  var h = '<table><thead><tr><th class="n">№</th>';
+  cols.forEach(function(c){
+    var lbl = c===m.txOp ? "Вид операции" : c===m.txAmount ? t.headers[c]+", USD" : t.headers[c];
+    h += '<th'+(c===m.txAmount?' class="n"':'')+'>'+esc(lbl)+'</th>';
+  });
+  h += '<th class="n new">Курс USD/KZT</th><th class="new">Дата курса</th><th class="n new">Сумма, KZT</th></tr></thead><tbody>';
+  var sumUsd=0, sumKzt=0;
+  rows.forEach(function(row){ if (row.kzt!==null){ sumUsd+=row.amt; sumKzt+=row.kzt; } });
+  rows.slice(0, S.shown).forEach(function(row){
+    h += '<tr'+(row.st==="norate"||row.st==="nodate"?' class="miss"':'')+'><td class="idx n">'+(row.i+1)+'</td>';
+    cols.forEach(function(c){
+      var v=row.r[c];
+      if (c===m.txOp) h += '<td><span class="badge '+classify(row.op)+'"><span class="dot"></span>'+esc(row.op)+'</span></td>';
+      else if (c===m.txAmount) h += '<td class="n">'+(row.amt!==null?fmt(row.amt):esc(v))+'</td>';
+      else if (c===m.txDate) h += '<td>'+(row.k?keyToRu(row.k):esc(v))+'</td>';
+      else h += '<td>'+esc(v instanceof Date ? v.toLocaleDateString("ru-RU") : v)+'</td>';
+    });
+    if (row.st==="cur") h += '<td class="n new muted" colspan="3">'+esc(row.cur)+' — не пересчитывается</td>';
+    else if (row.st==="nodate") h += '<td class="n new miss-t" colspan="3">дата не распознана</td>';
+    else if (row.st==="norate") h += '<td class="n new miss-t" colspan="3">нет курса на '+keyToRu(row.k)+'</td>';
+    else {
+      var shifted = row.rdate!==row.k;
+      h += '<td class="n new">'+nfR.format(row.rate)+'</td><td class="new">'+keyToRu(row.rdate)+(shifted?'<small>ближайшая дата</small>':'')+'</td>'+
+        '<td class="n new kzt">'+(row.kzt!==null?fmt(row.kzt):'<span class="muted">нет суммы</span>')+'</td>';
+    }
+    h += '</tr>';
+  });
+  h += '</tbody><tfoot><tr><td colspan="'+(cols.length+1)+'">Итого'+(S.filter?' — '+esc(S.filter):'')+' ('+rows.length+')</td>'+
+       '<td class="n new" colspan="3">'+fmt(sumKzt)+' ₸</td></tr></tfoot></table>';
+  // вставим сумму в долларах в итоговую строку под столбцом суммы
+  box.innerHTML = h;
+  var amtPos = cols.indexOf(m.txAmount);
+  if (amtPos>=0){
+    var tr = box.querySelector("tfoot tr");
+    tr.innerHTML = '<td colspan="'+(amtPos+1)+'">Итого'+(S.filter?' — '+esc(S.filter):'')+' ('+rows.length+')</td>'+
+      '<td class="n">'+fmt(sumUsd)+'</td>'+(cols.length-amtPos-1>0?'<td colspan="'+(cols.length-amtPos-1)+'"></td>':'')+
+      '<td class="new" colspan="2"></td><td class="n new kzt">'+fmt(sumKzt)+'</td>';
+  }
+  var more=$("btnMore");
+  more.hidden = rows.length <= S.shown;
+  more.textContent = "Показать ещё ("+(rows.length-S.shown)+")";
+}
+function render(){ recompute(); renderInputs(); renderMeta(); renderSummary(); renderTable(); }
+function refresh(){ recompute(); renderMeta(); renderSummary(); renderTable(); }
+
+/* ---------- Загрузка ---------- */
+function makeTable(parsed, name, sample){
+  var t = { name:name, sample:!!sample, delim: parsed.delim || ";" };
+  if (parsed.wb){
+    t.wb = parsed.wb;
+    var best=parsed.wb.SheetNames[0], bestN=-1;
+    parsed.wb.SheetNames.forEach(function(n){ var r=sheetRows(parsed.wb,n).length; if(r>bestN){bestN=r;best=n;} });
+    t.sheet = best; t.rows = sheetRows(parsed.wb, best);
+  } else t.rows = parsed.rows;
+  t.headerIdx = detectHeader(t.rows);
+  applyHeader(t);
+  return t;
+}
+function load(kind, file){
+  var err = $(kind+"Err"); err.hidden = true;
+  readFile(file).then(function(p){
+    var t = makeTable(p, file.name, false);
+    if (!t.data.length) throw new Error("В файле не найдено строк с данными.");
+    S[kind] = t;
+    if (kind==="tx"){ guessTx(); S.filter=null; S.shown=500; } else guessFx();
+    render();
+    toast(kind==="tx" ? "Транзакции загружены" : "Курсы загружены");
+  }).catch(function(e){
+    err.textContent = "Не удалось прочитать файл: " + (e && e.message ? e.message : e);
+    err.hidden = false;
+  });
+}
+["tx","fx"].forEach(function(k){
+  var input=$(k+"File"), drop=$(k+"Drop");
+  input.addEventListener("change", function(){ if (input.files[0]) load(k, input.files[0]); input.value=""; });
+  drop.addEventListener("dragover", function(e){ e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", function(){ drop.classList.remove("over"); });
+  drop.addEventListener("drop", function(e){ e.preventDefault(); drop.classList.remove("over"); var f=e.dataTransfer.files[0]; if (f) load(k, f); });
+  $(k+"Header").addEventListener("change", function(){
+    var t=S[k]; if(!t) return;
+    var v = parseInt(this.value,10); if (!(v>=1)) return;
+    t.headerIdx = v-1; applyHeader(t);
+    if (k==="tx") guessTx(); else guessFx();
+    render();
+  });
+  $(k+"Sheet").addEventListener("change", function(){
+    var t=S[k]; t.sheet=this.value; t.rows=sheetRows(t.wb,t.sheet); t.headerIdx=detectHeader(t.rows); applyHeader(t);
+    if (k==="tx") guessTx(); else guessFx();
+    render();
+  });
+});
+[["mTxDate","txDate"],["mTxOp","txOp"],["mTxAmount","txAmount"],["mTxCur","txCur"],["mFxDate","fxDate"],["mFxRate","fxRate"],["mFxCur","fxCur"]].forEach(function(p){
+  $(p[0]).addEventListener("change", function(){ S.m[p[1]] = parseInt(this.value,10); if (p[1]==="txOp") S.filter=null; refresh(); });
+});
+$("optRule").addEventListener("change", function(){ S.rule=this.value; refresh(); });
+$("optOrder").addEventListener("change", function(){ S.order=this.value; refresh(); });
+$("optAll").addEventListener("change", function(){ S.showAll=this.checked; renderTable(); });
+$("ops").addEventListener("click", function(e){
+  var b=e.target.closest(".op"); if(!b) return;
+  S.filter = b.getAttribute("data-op") || null; S.shown=500;
+  renderSummary(); renderTable();
+});
+$("btnMore").addEventListener("click", function(){ S.shown += 1000; renderTable(); });
+
+/* ---------- Экспорт ---------- */
+function exportRows(forText){
+  var t=S.tx, res=S.res, dec=res.dec;
+  var num = function(n, digits){
+    if (n==null) return "";
+    if (!forText) return n;
+    var s = digits ? n.toFixed(digits) : String(n);
+    return dec==="," ? s.replace(".",",") : s;
+  };
+  var out = [t.headers.concat(["Курс USD/KZT (НБ РК)","Дата курса","Сумма, KZT"])];
+  res.rows.forEach(function(row){
+    var r = row.r.map(function(v){ return v instanceof Date ? v.toLocaleDateString("ru-RU") : v; });
+    var note = row.st==="cur" ? "не USD" : row.st==="norate" ? "нет курса" : row.st==="nodate" ? "дата не распознана" : "";
+    r.push(row.rate!=null ? num(row.rate) : note, row.rdate ? keyToRu(row.rdate) : "", row.kzt!=null ? num(row.kzt,2) : "");
+    out.push(r);
+  });
+  return out;
+}
+function baseName(){ return (S.tx.name||"transactions").replace(/\.[^.]+$/,"") + "_KZT"; }
+function save(blob, name){
+  try{
+    var url=URL.createObjectURL(blob), a=document.createElement("a");
+    a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+    toast("Файл «"+name+"» сформирован");
+  } catch(e){ toast("Скачивание недоступно — используйте «Копировать таблицу»"); }
+}
+$("btnCsv").addEventListener("click", function(){
+  if (!S.tx) return;
+  var d = S.tx.delim || ";";
+  var csv = exportRows(true).map(function(r){
+    return r.map(function(v){ var s=String(v==null?"":v); return /["\r\n]/.test(s) || s.indexOf(d)>=0 ? '"'+s.replace(/"/g,'""')+'"' : s; }).join(d);
+  }).join("\r\n");
+  save(new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"}), baseName()+".csv");
+});
+$("btnXlsx").addEventListener("click", function(){
+  if (!S.tx) return;
+  if (typeof XLSX === "undefined"){ toast("Библиотека Excel не загрузилась — скачайте CSV"); return; }
+  var ws = XLSX.utils.aoa_to_sheet(exportRows(false));
+  var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Транзакции KZT");
+  var out = XLSX.write(wb,{type:"array",bookType:"xlsx"});
+  save(new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}), baseName()+".xlsx");
+});
+$("btnCopy").addEventListener("click", function(){
+  if (!S.tx) return;
+  var tsv = exportRows(true).map(function(r){ return r.map(function(v){ return String(v==null?"":v).replace(/[\t\r\n]+/g," "); }).join("\t"); }).join("\n");
+  var fallback = function(){
+    var ta=document.createElement("textarea"); ta.value=tsv; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    var ok=false; try{ ok=document.execCommand("copy"); }catch(e){}
+    ta.remove(); toast(ok ? "Таблица скопирована — вставьте в Excel" : "Не удалось скопировать");
+  };
+  try{
+    navigator.clipboard.writeText(tsv).then(function(){ toast("Таблица скопирована — вставьте в Excel"); }, fallback);
+  } catch(e){ fallback(); }
+});
+
+/* ---------- Старт с примером ---------- */
+S.tx = makeTable(parseCSV(SAMPLE_TX), "transactions.csv", true); guessTx();
+S.fx = makeTable(parseCSV(SAMPLE_FX), "nbrk_usd.csv", true); guessFx();
+render();
+})();
+</script>
+</body>
+</html>
