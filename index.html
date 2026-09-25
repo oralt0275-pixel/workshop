@@ -63,6 +63,9 @@ label.f{display:grid;gap:4px;font-size:12px;color:var(--muted);letter-spacing:.0
 select,input[type=number]{font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 8px;width:100%;min-width:0}
 select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .meta{font-size:13px;color:var(--muted)}
+.cfg summary{cursor:pointer;font-size:13px;color:var(--muted);width:fit-content}
+.cfg summary:hover{color:var(--accent)}
+.cfg[open] summary{margin-bottom:10px}
 .meta b{color:var(--ink);font-weight:500;font-family:var(--mono);font-size:12.5px}
 .err{color:var(--neg);font-size:13px}
 .hint{font-size:13px;color:var(--muted);margin:0}
@@ -151,6 +154,7 @@ td.wrap{white-space:normal;min-width:180px;max-width:320px}
         <span><span class="t">Выберите или перетащите файл</span><br><span class="s" id="txName">CSV или Excel</span></span>
       </label>
       <div class="err" id="txErr" hidden></div>
+      <details class="cfg" id="txCfg"><summary>Настроить столбцы вручную</summary>
       <div class="fields">
         <label class="f">Дата операции<select id="mTxDate"></select></label>
         <label class="f">Вид операции<select id="mTxOp"></select></label>
@@ -161,6 +165,7 @@ td.wrap{white-space:normal;min-width:180px;max-width:320px}
         <label class="f" id="txSheetBox" hidden>Лист<select id="txSheet"></select></label>
         <label class="f">Строка заголовков<input type="number" id="txHeader" min="1" step="1"></label>
       </div>
+      </details>
       <div class="meta" id="txMeta"></div>
     </div>
 
@@ -172,6 +177,7 @@ td.wrap{white-space:normal;min-width:180px;max-width:320px}
         <span><span class="t">Выберите или перетащите файл</span><br><span class="s" id="fxName">CSV или Excel с сайта nationalbank.kz</span></span>
       </label>
       <div class="err" id="fxErr" hidden></div>
+      <details class="cfg" id="fxCfg"><summary>Настроить столбцы вручную</summary>
       <div class="fields">
         <label class="f">Дата курса<select id="mFxDate"></select></label>
         <label class="f">Курс доллара США<select id="mFxRate"></select></label>
@@ -179,6 +185,7 @@ td.wrap{white-space:normal;min-width:180px;max-width:320px}
         <label class="f" id="fxSheetBox" hidden>Лист<select id="fxSheet"></select></label>
         <label class="f">Строка заголовков<input type="number" id="fxHeader" min="1" step="1"></label>
       </div>
+      </details>
       <div class="meta" id="fxMeta"></div>
       <p class="hint">Архив курсов: <a href="https://nationalbank.kz/ru/exchangerates/ezhednevnye-oficialnye-rynochnye-kursy-valyut" target="_blank" rel="noopener">nationalbank.kz → Официальные курсы валют</a>. Подойдёт файл с датой и курсом USD в отдельных столбцах.</p>
     </div>
@@ -611,11 +618,14 @@ function renderInputs(){
       $(k+"Sheet").innerHTML = tb.wb.SheetNames.map(function(n){ return '<option'+(n===tb.sheet?' selected':'')+'>'+esc(n)+'</option>'; }).join("");
     } else box.hidden=true;
   });
+  // настройки открываются сами, только если нужный столбец не нашёлся
+  if (t && (m.txDate<0 || m.txAmount<0)) $("txCfg").open = true;
+  if (f && (m.fxDate<0 || m.fxRate<0)) $("fxCfg").open = true;
   $("sampleBanner").hidden = !((t && t.sample) || (f && f.sample));
 }
 function renderMeta(){
   var res=S.res, R=res.R, t=S.tx;
-  $("txMeta").innerHTML = t ? 'Строк с данными: <b>'+t.data.length+'</b>'+(res.minK?' · период <b>'+keyToRu(res.minK)+'</b> — <b>'+keyToRu(res.maxK)+'</b>':'') : "";
+  $("txMeta").innerHTML = t ? 'Операций: <b>'+t.data.length+'</b>'+(res.minK?' · период <b>'+keyToRu(res.minK)+'</b> — <b>'+keyToRu(res.maxK)+'</b>':'') : "";
   var fe=$("fxErr");
   if (R.err){ fe.textContent=R.err; fe.hidden=false; } else fe.hidden=true;
   $("fxMeta").innerHTML = R.keys.length ? 'Курсов: <b>'+R.keys.length+'</b> · с <b>'+keyToRu(R.keys[0])+'</b> по <b>'+keyToRu(R.keys[R.keys.length-1])+'</b>'+(R.skipped?' · пропущено строк: '+R.skipped:'') : "";
@@ -747,6 +757,7 @@ function load(kind, file){
     var t = makeTable(p, file.name, false);
     if (!t.data.length) throw new Error("В файле не найдено строк с данными.");
     S[kind] = t;
+    $(kind+"Cfg").open = false;
     if (kind==="tx"){ guessTx(); S.filter=null; S.shown=500; } else guessFx();
     render();
     toast(kind==="tx" ? "Транзакции загружены" : "Курсы загружены");
