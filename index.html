@@ -116,7 +116,7 @@ th.sort button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px
 th.sort .arr{font-size:10px;opacity:.45}
 th.sort[aria-sort] .arr{opacity:1;color:var(--accent)}
 td.sec{font-family:var(--mono);font-size:12.5px;font-weight:500}
-td.wrap{white-space:normal;min-width:180px;max-width:320px}
+td.twrap{white-space:normal;min-width:180px;max-width:320px}
 .badge{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:99px;font-size:12.5px;font-weight:500;background:var(--sunken);color:var(--ink);max-width:260px;overflow:hidden;text-overflow:ellipsis}
 .t-buy{--c:var(--accent);--cs:var(--accent-soft)}
 .t-sell{--c:var(--gold);--cs:var(--gold-soft)}
@@ -218,10 +218,10 @@ td.wrap{white-space:normal;min-width:180px;max-width:320px}
     <button class="b primary" id="btnXlsx" type="button">Скачать Excel</button>
     <button class="b" id="btnCsv" type="button">Скачать CSV</button>
     <button class="b" id="btnCopy" type="button">Копировать таблицу</button>
-    <p class="hint">В файл попадут все строки и столбцы исходной выписки плюс «Вид операции», «Ценная бумага», «Наименование», «Курс USD/KZT», «Дата курса» и «Сумма, KZT» — в том порядке сортировки, что выбран в таблице. Если скачивание не началось, скопируйте таблицу и вставьте её в Excel.</p>
+    <p class="hint">В файл попадут все строки и столбцы исходной выписки плюс «Дата курса» (сразу после даты операции), «Ценная бумага», «Курс USD/KZT» и «Сумма, KZT» — в том порядке сортировки, что выбран в таблице. Если скачивание не началось, скопируйте таблицу и вставьте её в Excel.</p>
   </div>
 
-  <p class="hint" id="sortHint">Нажмите на заголовок столбца, чтобы отсортировать таблицу, например по виду операции или ценной бумаге. Повторное нажатие меняет направление.</p>
+  <p class="hint" id="sortHint">Нажмите на заголовок столбца, чтобы отсортировать таблицу, например по виду операции или ценной бумаге. Цвет метки вида операции показывает группу: зелёный — доходы, красный — налоги и комиссии, синий — покупки, жёлтый — продажи. Повторное нажатие меняет направление.</p>
   <div class="tablebox" id="tableBox"></div>
   <button class="b more" id="btnMore" type="button" hidden>Показать ещё</button>
 </div>
@@ -586,7 +586,8 @@ function recompute(){
         if (amt!==null){ row.kzt = Math.round(amt*f.rate*100)/100; res.conv++; }
       }
     }
-    var g = res.ops[row.kind] || (res.ops[row.kind] = {n:0, usd:0, kzt:0, cls:classify(row.kind)});
+    row.opLabel = op || "Без вида операции";
+    var g = res.ops[row.opLabel] || (res.ops[row.opLabel] = {n:0, usd:0, kzt:0, cls:classify(row.kind)});
     g.n++;
     if (row.kzt!==null){ g.usd += row.amt; g.kzt += row.kzt; }
     res.rows.push(row);
@@ -652,22 +653,21 @@ function tableSpecs(){
   var m=S.m, t=S.tx, specs=[];
   var raw = function(v){ return v instanceof Date ? v.toLocaleDateString("ru-RU") : v; };
   specs.push({key:"i", label:"№", cls:"n idx", val:function(r){return r.i;}, html:function(r){ return String(r.i+1); }});
-  if (m.txDate>=0) specs.push({key:"date", label:t.headers[m.txDate], val:function(r){return r.k||"";}, html:function(r){ return r.k?keyToRu(r.k):esc(raw(r.r[m.txDate])); }});
-  specs.push({key:"kind", label:"Вид операции", val:function(r){return r.kind;}, html:function(r){ return '<span class="badge '+classify(r.kind)+'"><span class="dot"></span>'+esc(r.kind)+'</span>'; }});
-  if (m.txSym>=0 || m.txDesc>=0){
+  if (m.txDate>=0) specs.push({key:"date", label:"Дата операции", val:function(r){return r.k||"";}, html:function(r){ return r.k?keyToRu(r.k):esc(raw(r.r[m.txDate])); }});
+  specs.push({key:"rdate", label:"Дата курса", cls:"new", val:function(r){return r.rdate||"";}});
+  // вид операции — как в файле транзакций; цвет метки показывает группу (доход, налог/комиссия, покупка, продажа)
+  specs.push({key:"op", label:"Вид операции", val:function(r){return r.opLabel;}, html:function(r){ return '<span class="badge '+classify(r.kind)+'" title="'+esc(r.kind)+'"><span class="dot"></span>'+esc(r.opLabel)+'</span>'; }});
+  if (m.txSym>=0 || m.txDesc>=0)
     specs.push({key:"sec", label:"Ценная бумага", cls:"sec", val:function(r){return r.sec;}, html:function(r){ return esc(r.sec); }});
-    specs.push({key:"secName", label:"Наименование", cls:"wrap", val:function(r){return r.secName;}, html:function(r){ return esc(r.secName); }});
-  }
-  var orig = S.showAll ? t.headers.map(function(_,i){return i;}) : [m.txOp, m.txDesc, m.txCur, m.txAmount];
-  var seen = {}; seen[m.txDate]=1;
+  var orig = S.showAll ? t.headers.map(function(_,i){return i;}) : [m.txDesc, m.txCur, m.txAmount];
+  var seen = {}; seen[m.txDate]=1; seen[m.txOp]=1;
   orig.forEach(function(c){
     if (c<0 || seen[c]) return; seen[c]=1;
     if (c===m.txAmount) specs.push({key:"amt", label:t.headers[c]+", USD", cls:"n", val:function(r){return r.amt;}, html:function(r){ return r.amt!==null?fmt(r.amt):esc(raw(r.r[c])); }});
-    else specs.push({key:"c"+c, label:c===m.txOp ? t.headers[c]+" (в выписке)" : t.headers[c], cls:(c===m.txOp||c===m.txDesc?"muted":"")+(c===m.txDesc?" wrap":""),
+    else specs.push({key:"c"+c, label:t.headers[c], cls:(c===m.txDesc?"muted twrap":""),
       val:function(r){ var v=r.r[c]; var n=typeof v==="number"?v:null; return n!==null?n:String(raw(v)==null?"":raw(v)); }, html:function(r){ return esc(raw(r.r[c])); }});
   });
   specs.push({key:"rate", label:"Курс USD/KZT", cls:"n new", val:function(r){return r.rate;}});
-  specs.push({key:"rdate", label:"Дата курса", cls:"new", val:function(r){return r.rdate||"";}});
   specs.push({key:"kzt", label:"Сумма, KZT", cls:"n new kzt", val:function(r){return r.kzt;}});
   return specs;
 }
@@ -694,7 +694,7 @@ function renderTable(){
   var box=$("tableBox"), t=S.tx, res=S.res;
   if (!t){ box.innerHTML='<div class="empty">Загрузите файл транзакций.</div>'; $("btnMore").hidden=true; return; }
   var specs = tableSpecs();
-  var rows = S.filter ? res.rows.filter(function(r){ return r.kind===S.filter; }) : res.rows;
+  var rows = S.filter ? res.rows.filter(function(r){ return r.opLabel===S.filter; }) : res.rows;
   rows = sortRows(rows, specs);
   var h = '<table><thead><tr>';
   specs.forEach(function(sp){
@@ -709,12 +709,12 @@ function renderTable(){
     h += '<tr'+(row.st==="norate"||row.st==="nodate"?' class="miss"':'')+'>';
     specs.forEach(function(sp){
       if (sp.key==="rate"){
-        if (row.st==="cur"){ h += '<td class="n new muted" colspan="3">'+esc(row.cur)+' — не пересчитывается</td>'; return; }
-        if (row.st==="nodate"){ h += '<td class="n new miss-t" colspan="3">дата не распознана</td>'; return; }
-        if (row.st==="norate"){ h += '<td class="n new miss-t" colspan="3">нет курса на '+keyToRu(row.k)+'</td>'; return; }
+        if (row.st==="cur"){ h += '<td class="n new muted" colspan="2">'+esc(row.cur)+' — не пересчитывается</td>'; return; }
+        if (row.st==="nodate"){ h += '<td class="n new miss-t" colspan="2">дата не распознана</td>'; return; }
+        if (row.st==="norate"){ h += '<td class="n new miss-t" colspan="2">нет курса на '+keyToRu(row.k)+'</td>'; return; }
         h += '<td class="n new">'+nfR.format(row.rate)+'</td>'; return;
       }
-      if (sp.key==="rdate"){ if (row.st==="ok") h += '<td class="new">'+keyToRu(row.rdate)+(row.rdate!==row.k?'<small>ближайшая дата</small>':'')+'</td>'; return; }
+      if (sp.key==="rdate"){ h += row.st==="ok" ? '<td class="new">'+keyToRu(row.rdate)+(row.rdate!==row.k?'<small>ближайшая дата</small>':'')+'</td>' : '<td class="new muted">—</td>'; return; }
       if (sp.key==="kzt"){ if (row.st==="ok") h += '<td class="n new kzt">'+(row.kzt!==null?fmt(row.kzt):'<span class="muted">нет суммы</span>')+'</td>'; return; }
       h += '<td'+(sp.cls?' class="'+sp.cls+'"':'')+'>'+sp.html(row)+'</td>';
     });
@@ -814,11 +814,23 @@ function exportRows(forText){
     var s = digits ? n.toFixed(digits) : String(n);
     return dec==="," ? s.replace(".",",") : s;
   };
-  var out = [t.headers.concat(["Вид операции","Ценная бумага","Наименование ценной бумаги","Курс USD/KZT (НБ РК)","Дата курса","Сумма, KZT"])];
+  var m=S.m, hasSec = m.txSym>=0 || m.txDesc>=0;
+  var head = [];
+  t.headers.forEach(function(h,c){
+    head.push(c===m.txDate ? "Дата операции" : c===m.txOp ? "Вид операции" : h);
+    if (c===m.txDate) head.push("Дата курса");
+  });
+  if (m.txDate<0) head.push("Дата курса");
+  if (hasSec) head.push("Ценная бумага");
+  head.push("Курс USD/KZT (НБ РК)","Сумма, KZT");
+  var out = [head];
   sortRows(res.rows, tableSpecs()).forEach(function(row){
-    var r = row.r.map(function(v){ return v instanceof Date ? v.toLocaleDateString("ru-RU") : v; });
+    var r = [];
+    row.r.forEach(function(v,c){ r.push(v instanceof Date ? v.toLocaleDateString("ru-RU") : v); if (c===m.txDate) r.push(row.rdate ? keyToRu(row.rdate) : ""); });
+    if (m.txDate<0) r.push(row.rdate ? keyToRu(row.rdate) : "");
     var note = row.st==="cur" ? "не USD" : row.st==="norate" ? "нет курса" : row.st==="nodate" ? "дата не распознана" : "";
-    r.push(row.kind, row.sec, row.secName, row.rate!=null ? num(row.rate) : note, row.rdate ? keyToRu(row.rdate) : "", row.kzt!=null ? num(row.kzt,2) : "");
+    if (hasSec) r.push(row.sec);
+    r.push(row.rate!=null ? num(row.rate) : note, row.kzt!=null ? num(row.kzt,2) : "");
     out.push(r);
   });
   return out;
