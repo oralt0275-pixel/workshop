@@ -218,7 +218,7 @@ td.twrap{white-space:normal;min-width:180px;max-width:320px}
     <button class="b primary" id="btnXlsx" type="button">Скачать Excel</button>
     <button class="b" id="btnCsv" type="button">Скачать CSV</button>
     <button class="b" id="btnCopy" type="button">Копировать таблицу</button>
-    <p class="hint">В файл попадут все строки и столбцы исходной выписки плюс «Дата курса» (сразу после даты операции), «Ценная бумага», «Курс USD/KZT» и «Сумма, KZT» — в том порядке сортировки, что выбран в таблице. Если скачивание не началось, скопируйте таблицу и вставьте её в Excel.</p>
+    <p class="hint">В файл попадёт таблица ровно в том виде, как на экране: те же столбцы, фильтр по виду операции, сортировка и итоговая строка. Чтобы выгрузить все столбцы выписки, включите «Показать все столбцы файла». Если скачивание не началось, скопируйте таблицу и вставьте её в Excel.</p>
   </div>
 
   <p class="hint" id="sortHint">Нажмите на заголовок столбца, чтобы отсортировать таблицу, например по виду операции или ценной бумаге. Цвет метки вида операции показывает группу: зелёный — доходы, красный — налоги и комиссии, синий — покупки, жёлтый — продажи. Повторное нажатие меняет направление.</p>
@@ -652,23 +652,29 @@ function renderSummary(){
 function tableSpecs(){
   var m=S.m, t=S.tx, specs=[];
   var raw = function(v){ return v instanceof Date ? v.toLocaleDateString("ru-RU") : v; };
-  specs.push({key:"i", label:"№", cls:"n idx", val:function(r){return r.i;}, html:function(r){ return String(r.i+1); }});
-  if (m.txDate>=0) specs.push({key:"date", label:"Дата операции", val:function(r){return r.k||"";}, html:function(r){ return r.k?keyToRu(r.k):esc(raw(r.r[m.txDate])); }});
-  specs.push({key:"rdate", label:"Дата курса", cls:"new", val:function(r){return r.rdate||"";}});
+  // t — тип значения для выгрузки: date (ключ YYYY-MM-DD), num (dp знаков), text
+  specs.push({key:"i", label:"№", cls:"n idx", t:"num", dp:0, val:function(r){return r.i;}, x:function(r){ return r.i+1; }, html:function(r){ return String(r.i+1); }});
+  if (m.txDate>=0) specs.push({key:"date", label:"Дата операции", t:"date", val:function(r){return r.k||"";}, x:function(r){ return r.k || String(raw(r.r[m.txDate])); }, html:function(r){ return r.k?keyToRu(r.k):esc(raw(r.r[m.txDate])); }});
+  specs.push({key:"rdate", label:"Дата курса", cls:"new", t:"date", val:function(r){return r.rdate||"";}, x:function(r){ return r.rdate||""; }});
   // вид операции — как в файле транзакций; цвет метки показывает группу (доход, налог/комиссия, покупка, продажа)
-  specs.push({key:"op", label:"Вид операции", val:function(r){return r.opLabel;}, html:function(r){ return '<span class="badge '+classify(r.kind)+'" title="'+esc(r.kind)+'"><span class="dot"></span>'+esc(r.opLabel)+'</span>'; }});
+  specs.push({key:"op", label:"Вид операции", t:"text", val:function(r){return r.opLabel;}, x:function(r){ return r.opLabel; }, html:function(r){ return '<span class="badge '+classify(r.kind)+'" title="'+esc(r.kind)+'"><span class="dot"></span>'+esc(r.opLabel)+'</span>'; }});
   if (m.txSym>=0 || m.txDesc>=0)
-    specs.push({key:"sec", label:"Ценная бумага", cls:"sec", val:function(r){return r.sec;}, html:function(r){ return esc(r.sec); }});
+    specs.push({key:"sec", label:"Ценная бумага", cls:"sec", t:"text", val:function(r){return r.sec;}, x:function(r){ return r.sec; }, html:function(r){ return esc(r.sec); }});
   var orig = S.showAll ? t.headers.map(function(_,i){return i;}) : [m.txDesc, m.txCur, m.txAmount];
   var seen = {}; seen[m.txDate]=1; seen[m.txOp]=1;
   orig.forEach(function(c){
     if (c<0 || seen[c]) return; seen[c]=1;
-    if (c===m.txAmount) specs.push({key:"amt", label:t.headers[c]+", USD", cls:"n", val:function(r){return r.amt;}, html:function(r){ return r.amt!==null?fmt(r.amt):esc(raw(r.r[c])); }});
-    else specs.push({key:"c"+c, label:t.headers[c], cls:(c===m.txDesc?"muted twrap":""),
-      val:function(r){ var v=r.r[c]; var n=typeof v==="number"?v:null; return n!==null?n:String(raw(v)==null?"":raw(v)); }, html:function(r){ return esc(raw(r.r[c])); }});
+    if (c===m.txAmount) specs.push({key:"amt", label:t.headers[c]+", USD", cls:"n", t:"num", dp:2, val:function(r){return r.amt;}, x:function(r){ return r.amt!==null ? r.amt : String(raw(r.r[c])); }, html:function(r){ return r.amt!==null?fmt(r.amt):esc(raw(r.r[c])); }});
+    else specs.push({key:"c"+c, label:t.headers[c], cls:(c===m.txDesc?"muted twrap":""), t:"auto",
+      val:function(r){ var v=r.r[c]; var n=typeof v==="number"?v:null; return n!==null?n:String(raw(v)==null?"":raw(v)); },
+      x:function(r){ var v=raw(r.r[c]); if (typeof v==="number") return v; v = v==null ? "" : String(v);
+        // денежные значения вида "$98.30" выгружаем числом, остальное — как в файле
+        return /^\s*\(?[-+]?\s*[$€₸]?\s*[-+]?[\d\s.,]+\)?\s*$/.test(v) && !isDateLike(v) && parseNum(v)!==null ? parseNum(v) : v; },
+      html:function(r){ return esc(raw(r.r[c])); }});
   });
-  specs.push({key:"rate", label:"Курс USD/KZT", cls:"n new", val:function(r){return r.rate;}});
-  specs.push({key:"kzt", label:"Сумма, KZT", cls:"n new kzt", val:function(r){return r.kzt;}});
+  specs.push({key:"rate", label:"Курс USD/KZT", cls:"n new", t:"num", dp:2, val:function(r){return r.rate;},
+    x:function(r){ return r.rate!=null ? r.rate : r.st==="cur" ? r.cur+" — не пересчитывается" : r.st==="norate" ? "нет курса на "+keyToRu(r.k) : r.st==="nodate" ? "дата не распознана" : ""; }});
+  specs.push({key:"kzt", label:"Сумма, KZT", cls:"n new kzt", t:"num", dp:2, val:function(r){return r.kzt;}, x:function(r){ return r.kzt!=null ? r.kzt : ""; }});
   return specs;
 }
 function sortRows(rows, specs){
@@ -690,12 +696,17 @@ function sortRows(rows, specs){
     return a.i-b.i;
   });
 }
+// строки ровно в том виде, как в таблице: с учётом фильтра по виду операции и сортировки
+function viewRows(specs){
+  var res=S.res;
+  var rows = S.filter ? res.rows.filter(function(r){ return r.opLabel===S.filter; }) : res.rows;
+  return sortRows(rows, specs);
+}
 function renderTable(){
   var box=$("tableBox"), t=S.tx, res=S.res;
   if (!t){ box.innerHTML='<div class="empty">Загрузите файл транзакций.</div>'; $("btnMore").hidden=true; return; }
   var specs = tableSpecs();
-  var rows = S.filter ? res.rows.filter(function(r){ return r.opLabel===S.filter; }) : res.rows;
-  rows = sortRows(rows, specs);
+  var rows = viewRows(specs);
   var h = '<table><thead><tr>';
   specs.forEach(function(sp){
     var on = S.sort.key===sp.key;
@@ -806,34 +817,34 @@ $("tableBox").addEventListener("click", function(e){
 $("btnMore").addEventListener("click", function(){ S.shown += 1000; renderTable(); });
 
 /* ---------- Экспорт ---------- */
-function exportRows(forText){
-  var t=S.tx, res=S.res, dec=res.dec;
-  var num = function(n, digits){
-    if (n==null) return "";
-    if (!forText) return n;
-    var s = digits ? n.toFixed(digits) : String(n);
-    return dec==="," ? s.replace(".",",") : s;
-  };
-  var m=S.m, hasSec = m.txSym>=0 || m.txDesc>=0;
-  var head = [];
-  t.headers.forEach(function(h,c){
-    head.push(c===m.txDate ? "Дата операции" : c===m.txOp ? "Вид операции" : h);
-    if (c===m.txDate) head.push("Дата курса");
+// Выгрузка повторяет таблицу на экране: те же столбцы, строки, фильтр, сортировка и итоговая строка
+function exportTable(){
+  var specs = tableSpecs(), rows = viewRows(specs);
+  var sumUsd=0, sumKzt=0;
+  rows.forEach(function(r){ if (r.kzt!==null){ sumUsd+=r.amt; sumKzt+=r.kzt; } });
+  var body = rows.map(function(r){ return specs.map(function(sp){ return sp.x ? sp.x(r) : ""; }); });
+  var total = specs.map(function(sp, i){
+    if (i===0) return "Итого"+(S.filter?" — "+S.filter:"")+" ("+rows.length+")";
+    return sp.key==="amt" ? Math.round(sumUsd*100)/100 : sp.key==="kzt" ? Math.round(sumKzt*100)/100 : "";
   });
-  if (m.txDate<0) head.push("Дата курса");
-  if (hasSec) head.push("Ценная бумага");
-  head.push("Курс USD/KZT (НБ РК)","Сумма, KZT");
-  var out = [head];
-  sortRows(res.rows, tableSpecs()).forEach(function(row){
-    var r = [];
-    row.r.forEach(function(v,c){ r.push(v instanceof Date ? v.toLocaleDateString("ru-RU") : v); if (c===m.txDate) r.push(row.rdate ? keyToRu(row.rdate) : ""); });
-    if (m.txDate<0) r.push(row.rdate ? keyToRu(row.rdate) : "");
-    var note = row.st==="cur" ? "не USD" : row.st==="norate" ? "нет курса" : row.st==="nodate" ? "дата не распознана" : "";
-    if (hasSec) r.push(row.sec);
-    r.push(row.rate!=null ? num(row.rate) : note, row.kzt!=null ? num(row.kzt,2) : "");
-    out.push(r);
-  });
-  return out;
+  return { specs:specs, head:specs.map(function(sp){ return sp.label; }), body:body, total:total };
+}
+function isKey(v){ return typeof v==="string" && /^\d{4}-\d{2}-\d{2}$/.test(v); }
+// текст для CSV и буфера обмена в привычном для русского Excel виде: 29.12.2023 и -95,26
+function textCell(v, sp){
+  if (v==null) return "";
+  if (typeof v==="number"){
+    // суммы — с двумя знаками; прочие числа из файла (цена, количество) — со всеми знаками, как в выписке
+    return (sp.dp!=null && sp.key!=="rate" ? v.toFixed(sp.dp) : String(v)).replace(".",",");
+  }
+  if (sp.t==="date" && isKey(v)) return keyToRu(v);
+  return String(v);
+}
+function exportText(delim){
+  var e = exportTable();
+  var q = function(s){ return /["\r\n]/.test(s) || s.indexOf(delim)>=0 ? '"'+s.replace(/"/g,'""')+'"' : s; };
+  var line = function(r){ return r.map(function(v,i){ return q(textCell(v, e.specs[i]).replace(delim==="\t"?/[\t\r\n]+/g:/\r?\n/g," ")); }).join(delim); };
+  return [e.head.map(q).join(delim)].concat(e.body.map(line), [line(e.total)]).join("\r\n");
 }
 function baseName(){ return (S.tx.name||"transactions").replace(/\.[^.]+$/,"") + "_KZT"; }
 var dlPromise = (window.claude && window.claude.use) ? window.claude.use("downloads").catch(function(){ return null; }) : Promise.resolve(null);
@@ -856,23 +867,35 @@ function saveLink(blob, name){
 }
 $("btnCsv").addEventListener("click", function(){
   if (!S.tx) return;
-  var d = S.tx.delim || ";";
-  var csv = exportRows(true).map(function(r){
-    return r.map(function(v){ var s=String(v==null?"":v); return /["\r\n]/.test(s) || s.indexOf(d)>=0 ? '"'+s.replace(/"/g,'""')+'"' : s; }).join(d);
-  }).join("\r\n");
+  // точка с запятой и десятичная запятая — так CSV сразу открывается по столбцам в русском Excel
+  var csv = exportText(";");
   save(new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"}), baseName()+".csv");
 });
 $("btnXlsx").addEventListener("click", function(){
   if (!S.tx) return;
   if (typeof XLSX === "undefined"){ toast("Библиотека Excel не загрузилась — скачайте CSV"); return; }
-  var ws = XLSX.utils.aoa_to_sheet(exportRows(false));
+  var e = exportTable();
+  var ws = XLSX.utils.aoa_to_sheet([e.head].concat(e.body, [e.total]));
+  var base = Date.UTC(1899,11,30);
+  // даты — настоящими датами Excel (дд.мм.гггг), суммы — числами с двумя знаками
+  for (var R=1; R<=e.body.length+1; R++) e.specs.forEach(function(sp, C){
+    var ref = XLSX.utils.encode_cell({r:R, c:C}), cell = ws[ref];
+    if (!cell) return;
+    if (sp.t==="date" && isKey(cell.v)){
+      var p = cell.v.split("-");
+      ws[ref] = {t:"n", v:(Date.UTC(+p[0],+p[1]-1,+p[2])-base)/86400000, z:"dd.mm.yyyy"};
+    } else if (cell.t==="n" && sp.t==="num" && sp.key!=="i"){
+      cell.z = sp.key==="rate" ? "0.00" : "#,##0.00";
+    }
+  });
+  ws["!cols"] = e.specs.map(function(sp){ return {wch: sp.key==="i" ? 5 : sp.t==="date" ? 12 : Math.min(Math.max(sp.label.length+2, sp.key==="c"+S.m.txDesc ? 40 : 12), 60)}; });
   var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Транзакции KZT");
   var out = XLSX.write(wb,{type:"array",bookType:"xlsx"});
   save(new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}), baseName()+".xlsx");
 });
 $("btnCopy").addEventListener("click", function(){
   if (!S.tx) return;
-  var tsv = exportRows(true).map(function(r){ return r.map(function(v){ return String(v==null?"":v).replace(/[\t\r\n]+/g," "); }).join("\t"); }).join("\n");
+  var tsv = exportText("\t");
   var fallback = function(){
     var ta=document.createElement("textarea"); ta.value=tsv; ta.style.position="fixed"; ta.style.opacity="0";
     document.body.appendChild(ta); ta.select();
